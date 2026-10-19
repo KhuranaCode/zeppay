@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "ZepPay - offline UPI payments over *99# USSD. Installable PWA with a built-in demo mode.",
+  "description": "ZepPay - offline UPI payments over *99# USSD. Installable PWA.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -64,7 +64,7 @@ ok(await has(p, /Finish in your dialer/) && await has(p, /\*99#/), 'handoff show
 await shot(p, '04-handoff');
 await p.click('[data-testid=open-handoff]'); await wait(200);
 let n = await nav(p);
-ok(n.length === 1 && n[0] === 'tel:*99%23', 'opens tel:*99%23 only');
+ok(n.length === 1 && n[0] === 'tel:*99*1*3*Test.User@okaxis%23', 'opens the full *99# command with the UPI ID');
 ok(!n.some((u) => u.startsWith('upi:')), 'never opens a upi:// link');
 await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 await wait(300);
@@ -89,7 +89,7 @@ ok(await has(p, /Finish in your dialer/) && await has(p, /\*99#/), 'dialer hando
 await shot(p, '08-dialer');
 await p.click('[data-testid=open-handoff]'); await wait(300);
 n = await nav(p);
-ok(n.at(-1) === 'tel:*99%23', 'opens tel:*99%23');
+ok(n.at(-1) === 'tel:*99*1*3*Test.User@okaxis%23', 'opens the full *99# command with the UPI ID');
 ok((await p.evaluate(() => window.__copied)).includes('Test.User@okaxis'), 'UPI ID copied to clipboard');
 await clickText(p, /It didn't work/); await wait(300);
 ok(await has(p, /Failed to pay/), 'failure recorded');
@@ -104,7 +104,7 @@ ok(!(await has(p, /UPI app/)), 'no UPI-app wording');
 await p.type('input[aria-label=Amount]', '100'); await p.click('.check input');
 await clickText(p, /with \*99#/); await wait(300);
 await p.click('[data-testid=open-handoff]'); await wait(200);
-ok((await nav(p)).at(-1) === 'tel:*99%23', 'opens tel:*99%23 for mobile');
+ok((await nav(p)).at(-1) === 'tel:*99*1*1*9876543210%23', 'opens the full *99# command with the number');
 await clickText(p, /^It worked$/); await wait(300);
 ok(await has(p, /Paid to/), 'mobile payment recorded');
 await clickText(p, /^Close$/);
@@ -112,7 +112,7 @@ await clickText(p, /^Close$/);
 console.log('Balance');
 await clickText(p, /^Balance$/); await wait(300);
 await p.click('[data-testid=balance-dial]'); await wait(200);
-ok((await nav(p)).at(-1) === 'tel:*99%23', 'opens tel:*99%23');
+ok((await nav(p)).at(-1) === 'tel:*99*3%23', 'opens the balance command *99*3#');
 await shot(p, '09-balance');
 await clickText(p, /^Close$/);
 
@@ -157,12 +157,12 @@ await clickText(p, /Clear payment history/); await clickText(p, /^History$/); aw
 ok(await has(p, /No payments yet/), 'history cleared');
 await p.close();
 
-console.log('iOS 27, iOS 26 and Android dialer routing');
-for (const [ua, expected] of [
-  ['Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', 'tel:*99%23%23'],
-  ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)', 'tel:*99%23'],
-  ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', 'tel:*99%23'],
-  ['Mozilla/5.0 (Linux; Android 16)', 'tel:*99%23'],
+console.log('iPhone (auto = iOS 27 style) and Android dialer routing');
+for (const [ua, payExpected, balExpected, stepRe] of [
+  ['Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)', 'tel:*99*1*3%23%23', 'tel:*99*3%23%23', /Paste it/],
+  ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)', 'tel:*99*1*3%23%23', 'tel:*99*3%23%23', /Paste it/],
+  ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)', 'tel:*99*1*3%23%23', 'tel:*99*3%23%23', /Paste it/],
+  ['Mozilla/5.0 (Linux; Android 16)', 'tel:*99*1*3*Test.User@okaxis%23', 'tel:*99*3%23', /already in it/],
 ]) {
   p = await fresh(); await p.setUserAgent(ua); await p.reload(); await wait(250);
   await skip(p);
@@ -171,17 +171,42 @@ for (const [ua, expected] of [
   await p.keyboard.press('Enter'); await wait(200);
   await p.type('input[aria-label=Amount]', '250'); await p.click('.check input');
   await clickText(p, /with \*99#/); await wait(200);
-  ok(await has(p, /Send Money/) && await has(p, /UPI ID/), ua + ': manual menu steps shown');
+  ok(await has(p, stepRe) && await has(p, /UPI ID/), ua + ': handoff steps match the platform');
   await p.click('[data-testid=open-handoff]'); await wait(100);
-  ok((await nav(p)).at(-1) === expected, ua + ': payment opens ' + expected);
+  ok((await nav(p)).at(-1) === payExpected, ua + ': payment opens ' + payExpected);
   ok((await p.evaluate(() => window.__copied)).includes('Test.User@okaxis'), ua + ': UPI ID copied');
   await p.close();
   p = await fresh(); await p.setUserAgent(ua); await p.reload(); await wait(250); await skip(p);
   await clickText(p, /^Balance$/); await wait(200);
   await p.click('[data-testid=balance-dial]'); await wait(100);
-  ok((await nav(p)).at(-1) === expected, ua + ': balance opens ' + expected);
+  ok((await nav(p)).at(-1) === balExpected, ua + ': balance opens ' + balExpected);
   await p.close();
 }
+
+console.log('Dialer code setting (iPhone)');
+p = await fresh();
+await p.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)');
+await p.evaluateOnNewDocument(() => { try { localStorage.setItem('zep.dialer', '"ios26"'); } catch (e) {} });
+await p.reload(); await wait(250); await skip(p);
+await clickText(p, /^UPI ID$/); await wait(200);
+await p.type('input[aria-label="UPI ID"]', 'Test.User@okaxis');
+await p.keyboard.press('Enter'); await wait(200);
+await p.type('input[aria-label=Amount]', '250'); await p.click('.check input');
+await clickText(p, /with \*99#/); await wait(200);
+ok(await has(p, /Send Money/), 'ios26 override: manual menu steps shown');
+await p.click('[data-testid=open-handoff]'); await wait(100);
+ok((await nav(p)).at(-1) === 'tel:*99%23', 'ios26 override: payment opens tel:*99%23');
+ok((await p.$('[data-testid=open-menu]')) === null, 'ios26 override: no menu-fallback button');
+await clickText(p, /^Cancel$/); await wait(250);
+await clickText(p, /^Settings$/); await wait(250);
+ok(await has(p, /Dialer codes/), 'settings shows the dialer codes control');
+await clickText(p, /^iOS 27\+$/); await wait(250);
+ok(await p.evaluate(() => JSON.parse(localStorage.getItem('zep.dialer'))) === 'ios27', 'dialer setting persists');
+await clickText(p, /^Home$/); await wait(200);
+await clickText(p, /^Balance$/); await wait(200);
+await p.click('[data-testid=balance-dial]'); await wait(100);
+ok((await nav(p)).at(-1) === 'tel:*99*3%23%23', 'ios27 override: balance opens tel:*99*3%23%23');
+await p.close();
 
 console.log('Dark / auto');
 p = await fresh({ dark: true });

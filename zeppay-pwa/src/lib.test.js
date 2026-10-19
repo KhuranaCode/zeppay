@@ -45,12 +45,41 @@ describe('misc', () => {
   });
 });
 
-describe('version-specific menu dialing', () => {
-  it('uses two hashes only on iOS 27', async () => {
+describe('platform dial codes', () => {
+  const ios = (v) => `Mozilla/5.0 (iPhone; CPU iPhone OS ${v}_0 like Mac OS X)`;
+  const android = 'Mozilla/5.0 (Linux; Android 16)';
+  it('Android dials the full command with the payee embedded', async () => {
+    const { ussdPayCode, ussdBalanceCode, ussdHandoffKind, ussdMenuCode } = await import('./lib.js');
+    expect(ussdPayCode({ vpa: 'a.b@ybl' }, android)).toBe('*99*1*3*a.b@ybl#');
+    expect(ussdPayCode({ mobile: '9876543210' }, android)).toBe('*99*1*1*9876543210#');
+    expect(ussdBalanceCode(android)).toBe('*99*3#');
+    expect(ussdMenuCode(android)).toBe('*99#');
+    expect(ussdHandoffKind(android)).toBe('fast');
+  });
+  it('auto defaults iPhone to the iOS 27 double-hash style (UA version is unreliable)', async () => {
+    const { ussdPayCode, ussdBalanceCode, ussdHandoffKind, ussdMenuCode } = await import('./lib.js');
+    for (const v of [16, 17, 18, 26, 27, 28]) {
+      expect(ussdHandoffKind(ios(v))).toBe('sub');
+      expect(ussdMenuCode(ios(v))).toBe('*99##');
+      expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(v))).toBe('*99*1*3##');
+      expect(ussdPayCode({ mobile: '9876543210' }, ios(v))).toBe('*99*1*1##');
+      expect(ussdBalanceCode(ios(v))).toBe('*99*3##');
+    }
+  });
+  it('manual override pins the style', async () => {
+    const { ussdPayCode, ussdBalanceCode, ussdHandoffKind, ussdMenuCode } = await import('./lib.js');
+    expect(ussdHandoffKind(ios(27), 'ios26')).toBe('menu');
+    expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(27), 'ios26')).toBe('*99#');
+    expect(ussdBalanceCode(ios(18), 'ios26')).toBe('*99#');
+    expect(ussdMenuCode(ios(18), 'ios26')).toBe('*99#');
+    expect(ussdHandoffKind(ios(18), 'ios27')).toBe('sub');
+    expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(18), 'ios27')).toBe('*99*1*3##');
+    expect(ussdBalanceCode(ios(18), 'ios27')).toBe('*99*3##');
+    expect(ussdHandoffKind(android, 'ios26')).toBe('fast');
+  });
+  it('non-iPhone and unknown platforms use single hash', async () => {
     const { ussdMenuCode } = await import('./lib.js');
-    for (const v of [16,17,18,26,28]) expect(ussdMenuCode(`Mozilla/5.0 (iPhone; CPU iPhone OS ${v}_0 like Mac OS X)`)).toBe('*99#');
-    expect(ussdMenuCode('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)')).toBe('*99##');
-    expect(ussdMenuCode('Mozilla/5.0 (Linux; Android 16)')).toBe('*99#');
+    expect(ussdMenuCode(android)).toBe('*99#');
     expect(ussdMenuCode('unknown')).toBe('*99#');
   });
 });

@@ -116,9 +116,51 @@ export function isIOS() {
   return /iPhone|iPad|iPod/.test(n.userAgent || '') || (n.platform === 'MacIntel' && n.maxTouchPoints > 1);
 }
 
-// User-requested dialer compatibility rule. Unknown iOS versions use one hash.
-export function ussdMenuCode(ua = typeof navigator === 'undefined' ? '' : navigator.userAgent) {
+// Platform dialer rule (user-requested):
+// - iOS 27: double-hash codes work in tel: links there, so dial the direct sub-codes (*99*1*3## style).
+// - iOS 26 and below: iOS blocks longer USSD-style tel: links, so only the bare menu (*99#) is safe.
+// - Android and everything else: dial the full fast-path command with the payee embedded (*99*1*3*<vpa>#).
+const defaultUA = () => (typeof navigator === 'undefined' ? '' : navigator.userAgent);
+function uaPlatform(ua) {
   const ios = /iPhone|iPad|iPod/.test(ua);
-  const version = ua.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[_\.]/);
-  return ios && Number(version?.[1]) === 27 ? '*99##' : '*99#';
+  const m = ua.match(/(?:CPU (?:iPhone )?OS|iPhone OS) (\d+)[_\.]/);
+  return { ios, major: m ? Number(m[1]) : null };
+}
+
+// Bare menu code for the given mode.
+export function ussdMenuCode(ua = defaultUA(), mode = 'auto') {
+  return ussdHandoffKind(ua, mode) === 'sub' ? '*99##' : '*99#';
+}
+
+// 'fast': payee embedded in the command. 'sub': direct sub-menu, payee gets pasted. 'menu': bare menu, navigate by hand.
+// mode: 'auto' | 'ios27' | 'ios26' (user setting; iPhone UA version reporting is unreliable).
+export function ussdHandoffKind(ua = defaultUA(), mode = 'auto') {
+  const { ios } = uaPlatform(ua);
+  if (!ios) return 'fast';
+  if (mode === 'ios27') return 'sub';
+  if (mode === 'ios26') return 'menu';
+  // Auto: Safari often freezes the reported OS version, so the UA cannot be trusted on
+  // iPhone. Default to the iOS 27 double-hash form; the user can pin "iOS 26 or below"
+  // in Settings when the dialer rejects it.
+  return 'sub';
+}
+
+// Payment dial code for a payee ({ vpa } or { mobile }).
+export function ussdPayCode(payee, ua = defaultUA(), mode = 'auto') {
+  const kind = ussdHandoffKind(ua, mode);
+  if (kind === 'fast') {
+    if (payee.vpa) return `*99*1*3*${payee.vpa}#`;
+    if (payee.mobile) return `*99*1*1*${payee.mobile}#`;
+    return ussdMenuCode(ua, mode);
+  }
+  if (kind === 'sub') return payee.vpa ? '*99*1*3##' : '*99*1*1##';
+  return ussdMenuCode(ua, mode);
+}
+
+// Balance dial code.
+export function ussdBalanceCode(ua = defaultUA(), mode = 'auto') {
+  const kind = ussdHandoffKind(ua, mode);
+  if (kind === 'fast') return '*99*3#';
+  if (kind === 'sub') return '*99*3##';
+  return ussdMenuCode(ua, mode);
 }
