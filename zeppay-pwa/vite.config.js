@@ -1,40 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
-
-export default defineConfig({
-  base: '/zeppay/ios/',
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
-      manifest: {
-        name: 'Zep Pay',
-        short_name: 'Zep Pay',
-        description: 'Offline UPI on iPhone — scan QR, copy ID, dial *99# in Phone.',
-        theme_color: '#3BA3FF',
-        background_color: '#1C1C1E',
-        display: 'standalone',
-        orientation: 'portrait',
-        start_url: '/zeppay/ios/',
-        icons: [
-          {
-            src: 'icons/icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'icons/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-      },
-    }),
-  ],
-});
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { createHash } from 'node:crypto';
+function offlineBundle() {
+  return { name: 'offline-bundle', writeBundle(options) {
+    const root = options.dir;
+    const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]);
+    const files = walk(root).filter((p) => !p.endsWith('/sw.js'));
+    const hash = createHash('sha256'); files.forEach((p) => hash.update(readFileSync(p)));
+    const urls = ['./', ...files.map((p) => './' + relative(root, p).replaceAll('\\', '/'))];
+    const sw = readFileSync('public/sw.js', 'utf8').replace('__BUILD_ID__', hash.digest('hex').slice(0, 16)).replace('/*PRECACHE*/[]', JSON.stringify(urls));
+    writeFileSync(join(root, 'sw.js'), sw);
+  }};
+}
+export default defineConfig({ base: './', plugins: [react(), offlineBundle()], test: { environment: 'node', include: ['src/**/*.test.js'] } });
