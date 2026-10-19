@@ -242,6 +242,16 @@ p = await fresh(); await wait(1500);
 ok(await p.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())), 'service worker registered');
 await p.setOfflineMode(true); await p.reload(); await wait(700);
 ok(await has(p, /Pay with no internet|Pay anyone/), 'loads offline');
+console.log('Styled FamPay-style QR, offline (zxing wasm from cache)');
+const fams = [['e2e/fixtures/fam-style.png', 'demo1234@fam'], ...(process.env.FAM_REAL ? [[process.env.FAM_REAL, '9615182000@fam']] : [])];
+for (let i = 0; i < 3; i++) { await clickText(p, /^Next/); await wait(100); }
+await clickText(p, /Get started/); await wait(300);
+for (const [f, vpa] of fams) {
+  await clickText(p, /^Scan QR$/); await wait(500);
+  await (await p.$('[data-testid=qr-file]')).uploadFile(f); await wait(2500);
+  ok(await p.$eval('[data-testid=payee-vpa]', (e) => e.textContent).catch(() => '') === vpa, 'decoded ' + f + ' offline');
+  await clickText(p, /^Back$/); await wait(300);
+}
 await p.close();
 
 await b.close(); srv.kill();

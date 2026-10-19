@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import jsQR from 'jsqr';
+import { decodeImageData } from './qr.js';
 import * as Ic from './Icons.jsx';
 import logo from './assets/logo.png';
 import { usePersisted } from './store.js';
@@ -292,27 +292,27 @@ function Scanner({ onClose, onResult, showToast }) {
               {
                 const c = canvas.current;
                 const g = c.getContext('2d', { willReadFrequently: true });
-                const decodeRegion = (sx, sy, sw, sh, cap) => {
+                const decodeRegion = async (sx, sy, sw, sh, cap) => {
                   const k = Math.min(1, cap / Math.max(sw, sh));
                   c.width = Math.max(1, Math.round(sw * k)); c.height = Math.max(1, Math.round(sh * k));
                   g.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
                   const d = g.getImageData(0, 0, c.width, c.height);
-                  return jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+                  return decodeImageData(d);
                 };
                 const vw = v.videoWidth, vh = v.videoHeight;
                 // Full frame at a bounded size leaves time for the camera to focus.
-                let r = decodeRegion(0, 0, vw, vh, 1600);
+                let r = await decodeRegion(0, 0, vw, vh, 1600);
                 if (!r) {
                   // Centre crop at higher detail for small or off-centre QRs.
                   const side = Math.floor(Math.min(vw, vh) * 0.7);
-                  r = decodeRegion((vw - side) / 2, (vh - side) / 2, side, side, 1600);
+                  r = await decodeRegion((vw - side) / 2, (vh - side) / 2, side, side, 1600);
                 }
                 if (!r && tickNo++ % 3 === 2) {
                   // Periodic near-full-resolution pass for very dense QRs.
-                  r = decodeRegion(0, 0, vw, vh, 3072);
+                  r = await decodeRegion(0, 0, vw, vh, 3072);
                 }
                 if (!alive) return;
-                if (r?.data && found(r.data)) return;
+                if (r && found(r)) return;
               }
             } catch { detector = null; /* retry with jsQR after a native detector failure */ }
           }
@@ -336,17 +336,19 @@ function Scanner({ onClose, onResult, showToast }) {
     const imageUrl = URL.createObjectURL(f);
     img.onload = () => {
       // Try two bounded resolutions. Avoid decoding a full 48MP phone photo on the UI thread.
-      const tryAt = (maxSide) => {
+      const tryAt = async (maxSide) => {
         const k = Math.min(1, maxSide / Math.max(img.width, img.height));
         const c = document.createElement('canvas');
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
         const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, c.width, c.height);
         const d = g.getImageData(0, 0, c.width, c.height);
-        return jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+        return decodeImageData(d);
       };
-      const r = tryAt(1400) || tryAt(2400) || tryAt(Number.MAX_SAFE_INTEGER);
-      URL.revokeObjectURL(imageUrl);
-      if (!r) showToast('No QR found in that image'); else handleText(r.data);
+      (async () => {
+        const r = (await tryAt(1400)) || (await tryAt(2400)) || (await tryAt(Number.MAX_SAFE_INTEGER));
+        URL.revokeObjectURL(imageUrl);
+        if (!r) showToast('No QR found in that image'); else handleText(r);
+      })();
     };
     img.onerror = () => { URL.revokeObjectURL(imageUrl); showToast('Could not read that image'); };
     img.src = imageUrl;
