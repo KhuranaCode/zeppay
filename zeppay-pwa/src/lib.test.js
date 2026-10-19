@@ -69,13 +69,31 @@ describe('platform dial codes', () => {
   it('manual override pins the style', async () => {
     const { ussdPayCode, ussdBalanceCode, ussdHandoffKind, ussdMenuCode } = await import('./lib.js');
     expect(ussdHandoffKind(ios(27), 'ios26')).toBe('menu');
-    expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(27), 'ios26')).toBe('*99#');
-    expect(ussdBalanceCode(ios(18), 'ios26')).toBe('*99#');
+    expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(27), 'ios26')).toBe('*99*1*3#');
+    expect(ussdPayCode({ mobile: '9876543210' }, ios(27), 'ios26')).toBe('*99*1*1#');
+    expect(ussdBalanceCode(ios(18), 'ios26')).toBe('*99*3#');
     expect(ussdMenuCode(ios(18), 'ios26')).toBe('*99#');
     expect(ussdHandoffKind(ios(18), 'ios27')).toBe('sub');
     expect(ussdPayCode({ vpa: 'a.b@ybl' }, ios(18), 'ios27')).toBe('*99*1*3##');
     expect(ussdBalanceCode(ios(18), 'ios27')).toBe('*99*3##');
     expect(ussdHandoffKind(android, 'ios26')).toBe('fast');
+  });
+  it('bank account path uses the account-transfer sub-code, never embedded', async () => {
+    const { ussdPayCode } = await import('./lib.js');
+    expect(ussdPayCode({ account: '50100078635437', ifsc: 'HDFC0000798' }, android)).toBe('*99*1*5#');
+    expect(ussdPayCode({ account: '50100078635437', ifsc: 'HDFC0000798' }, ios(27))).toBe('*99*1*5##');
+    expect(ussdPayCode({ account: '50100078635437', ifsc: 'HDFC0000798' }, ios(26), 'ios26')).toBe('*99*1*5#');
+    expect(ussdPayCode({ account: '50100078635437', ifsc: 'HDFC0000798' }, android)).not.toContain('50100078635437');
+  });
+  it('account and IFSC validation', async () => {
+    const { isValidAccount, isValidIfsc, normIfsc } = await import('./lib.js');
+    expect(isValidAccount('50100078635437')).toBe(true);
+    expect(isValidAccount('1234')).toBe(false);
+    expect(isValidAccount('5010 0078 635437')).toBe(true);
+    expect(isValidIfsc('HDFC0000798')).toBe(true);
+    expect(isValidIfsc('hdfc0000798')).toBe(true);
+    expect(isValidIfsc('HDFC1000798')).toBe(false);
+    expect(normIfsc('hdfc0000798')).toBe('HDFC0000798');
   });
   it('non-iPhone and unknown platforms use single hash', async () => {
     const { ussdMenuCode } = await import('./lib.js');

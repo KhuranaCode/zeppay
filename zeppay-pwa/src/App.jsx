@@ -5,7 +5,7 @@ import logo from './assets/logo.png';
 import { usePersisted } from './store.js';
 import {
   parseUpi, validateAmount, formatINR, telHref, CARRIERS, carrierSupported, newId, initials,
-  groupByDay, navigate, ussdMenuCode, ussdHandoffKind, ussdPayCode, ussdBalanceCode, isIOS, isValidVpa, isValidMobile, normMobile, USSD_SEND, USSD_MOBILE, USSD_BALANCE, USSD_MENU, MAX_AMOUNT,
+  groupByDay, navigate, ussdMenuCode, ussdHandoffKind, ussdPayCode, ussdBalanceCode, isIOS, isValidVpa, isValidMobile, normMobile, isValidAccount, normAccount, isValidIfsc, normIfsc, USSD_SEND, USSD_MOBILE, USSD_BALANCE, USSD_MENU, MAX_AMOUNT,
 } from './lib.js';
 
 const HUES = [252, 12, 164, 36, 200, 320, 90, 280];
@@ -14,7 +14,7 @@ function Avatar({ name, size = 48 }) {
   const h = hue(name || '?');
   return <span className="av" style={{ width: size, height: size, fontSize: size * 0.36, background: `hsl(${h} 70% 92%)`, color: `hsl(${h} 55% 32%)` }}>{initials(name)}</span>;
 }
-const label = (p) => p.name || (p.vpa ? p.vpa : p.mobile);
+const label = (p) => p.name || (p.vpa ? p.vpa : p.mobile ? p.mobile : p.account ? `A/c ${p.account}` : '');
 
 function useToast() {
   const [t, setT] = useState('');
@@ -153,7 +153,7 @@ function Onboarding({ onDone }) {
 function HomeTab({ supported, carrier, history, go, online, installEvt, onInstall, goTab }) {
   const recents = useMemo(() => {
     const seen = new Map();
-    for (const h of history) { const k = h.vpa || h.mobile; if (h.status === 'success' && !seen.has(k)) seen.set(k, h); }
+    for (const h of history) { const k = h.vpa || h.mobile || h.account; if (h.status === 'success' && !seen.has(k)) seen.set(k, h); }
     return [...seen.values()].slice(0, 8);
   }, [history]);
   const recent = history.slice(0, 3);
@@ -184,8 +184,8 @@ function HomeTab({ supported, carrier, history, go, online, installEvt, onInstal
       {recents.length > 0 && <>
         <h3 className="sec">Pay again</h3>
         <div className="people">{recents.map((r) => (
-          <button key={r.vpa || r.mobile} className="person" aria-label={`Pay ${label(r)}`} onClick={() => go({ name: 'pay', payee: { vpa: r.vpa, mobile: r.mobile, name: r.name } })}>
-            <Avatar name={label(r)} size={56} /><span>{(r.name || r.vpa || r.mobile).split(/[\s@]/)[0]}</span></button>))}</div>
+          <button key={r.vpa || r.mobile || r.account} className="person" aria-label={`Pay ${label(r)}`} onClick={() => go({ name: 'pay', payee: { vpa: r.vpa, mobile: r.mobile, account: r.account, ifsc: r.ifsc, name: r.name } })}>
+            <Avatar name={label(r)} size={56} /><span>{(r.name || r.vpa || r.mobile || `A/c ${r.account}`).split(/[\s@]/)[0]}</span></button>))}</div>
       </>}
 
       <div className="sechead"><h3 className="sec">Recent</h3>{history.length > 0 && <button onClick={() => goTab('history')}>See all</button>}</div>
@@ -210,9 +210,15 @@ const statusText = (s) => ({ success: 'Paid', failed: 'Failed', unknown: 'Not co
 function PayTo({ kind: initial, onClose, onNext }) {
   const [kind, setKind] = useState(initial);
   const [val, setVal] = useState('');
+  const [val2, setVal2] = useState('');
   const [name, setName] = useState('');
-  const ok = kind === 'upi' ? isValidVpa(val) : isValidMobile(val);
-  const submit = (e) => { e.preventDefault(); if (!ok) return; onNext(kind === 'upi' ? { vpa: val.trim(), name: name.trim() } : { mobile: normMobile(val), name: name.trim() }); };
+  const ok = kind === 'upi' ? isValidVpa(val) : kind === 'mobile' ? isValidMobile(val) : isValidAccount(val) && isValidIfsc(val2);
+  const submit = (e) => {
+    e.preventDefault(); if (!ok) return;
+    onNext(kind === 'upi' ? { vpa: val.trim(), name: name.trim() }
+      : kind === 'mobile' ? { mobile: normMobile(val), name: name.trim() }
+      : { account: normAccount(val), ifsc: normIfsc(val2), name: name.trim() });
+  };
   return (
     <div className="sheet" role="dialog" aria-label="Pay to">
       <header className="sheet-top"><button className="icon-btn" onClick={onClose} aria-label="Back"><Ic.Back /></button><b>Pay to</b><span style={{ width: 40 }} /></header>
@@ -220,11 +226,14 @@ function PayTo({ kind: initial, onClose, onNext }) {
         <div className="seg" role="tablist" aria-label="Payee type">
           <button type="button" role="tab" aria-selected={kind === 'upi'} className={kind === 'upi' ? 'on' : ''} onClick={() => { setKind('upi'); setVal(''); }}>UPI ID</button>
           <button type="button" role="tab" aria-selected={kind === 'mobile'} className={kind === 'mobile' ? 'on' : ''} onClick={() => { setKind('mobile'); setVal(''); }}>Mobile number</button>
+          <button type="button" role="tab" aria-selected={kind === 'bank'} className={kind === 'bank' ? 'on' : ''} onClick={() => { setKind('bank'); setVal(''); setVal2(''); }}>Bank a/c</button>
         </div>
-        <input className="field" autoFocus aria-label={kind === 'upi' ? 'UPI ID' : 'Mobile number'} placeholder={kind === 'upi' ? 'name@bank' : '10-digit mobile number'} inputMode={kind === 'upi' ? 'email' : 'numeric'} value={val} onChange={(e) => setVal(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck="false" />
-        {val && !ok && <p className="err">{kind === 'upi' ? 'Use the format name@bank.' : 'Enter a valid 10-digit Indian mobile number.'}</p>}
+        <input className="field" autoFocus aria-label={kind === 'upi' ? 'UPI ID' : kind === 'mobile' ? 'Mobile number' : 'Account number'} placeholder={kind === 'upi' ? 'name@bank' : kind === 'mobile' ? '10-digit mobile number' : 'Bank account number'} inputMode={kind === 'upi' ? 'email' : 'numeric'} value={val} onChange={(e) => setVal(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck="false" />
+        {kind === 'bank' && <input className="field" aria-label="IFSC" placeholder="IFSC (e.g. HDFC0001234)" maxLength={11} value={val2} onChange={(e) => setVal2(e.target.value)} autoCapitalize="characters" autoCorrect="off" spellCheck="false" />}
+        {val && !ok && <p className="err">{kind === 'upi' ? 'Use the format name@bank.' : kind === 'mobile' ? 'Enter a valid 10-digit Indian mobile number.' : 'Enter the account number (9-18 digits) and a valid IFSC.'}</p>}
         <input className="field" aria-label="Payee name (optional)" placeholder="Name (optional, for your history)" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
         {kind === 'mobile' && <p className="fine left">Mobile payments go through *99# only. The number must be linked to a UPI account.</p>}
+        {kind === 'bank' && <p className="fine left">Bank account payments go through *99# only. You paste the account number and IFSC at the prompt.</p>}
         <button className="btn primary wide" disabled={!ok} style={{ marginTop: 12 }}>Continue <Ic.Arrow width={20} height={20} /></button>
       </form>
     </div>
@@ -374,7 +383,7 @@ function PayScreen({ payee, supported, onClose, onGo }) {
   const [note, setNote] = useState(payee.note || '');
   const [confirmed, setConfirmed] = useState(false);
   const err = validateAmount(amount);
-  const base = { id: '', vpa: payee.vpa, mobile: payee.mobile, name: payee.name || '', amount: Number(amount), note };
+  const base = { id: '', vpa: payee.vpa, mobile: payee.mobile, account: payee.account, ifsc: payee.ifsc, name: payee.name || '', amount: Number(amount), note };
   const start = (route) => onGo({ ...base, id: newId(), route }, route);
   const dis = !!err || !confirmed;
   return (
@@ -382,7 +391,7 @@ function PayScreen({ payee, supported, onClose, onGo }) {
       <header className="sheet-top"><button className="icon-btn" onClick={onClose} aria-label="Back"><Ic.Back /></button><b>Pay</b><span style={{ width: 40 }} /></header>
       <div className="sheet-body">
         <div className="payee"><Avatar name={label(payee)} size={56} />
-          <div><div className="pname">{payee.name || (isMobile ? 'Mobile number' : 'Unnamed payee')}</div><div className="pvpa" data-testid="payee-vpa">{payee.vpa || payee.mobile}</div></div></div>
+          <div><div className="pname">{payee.name || (payee.vpa ? 'Unnamed payee' : payee.mobile ? 'Mobile number' : 'Bank account')}</div><div className="pvpa" data-testid="payee-vpa">{payee.vpa || payee.mobile || `A/c ${payee.account} · ${payee.ifsc}`}</div></div></div>
         <label className="amt">
           <span className="rs">₹</span>
           <input autoFocus inputMode="decimal" aria-label="Amount" placeholder="0" value={amount}
@@ -415,9 +424,9 @@ function Handoff({ tx, route, dialer = 'auto', showToast, onClose, onBack, onLau
   const code = ussdPayCode(tx, undefined, dialer);
   const kind = ussdHandoffKind(undefined, dialer);
   const menuCode = ussdMenuCode(undefined, dialer);
-  const menuKey = tx.vpa ? '3' : '1';
-  const target = tx.vpa || tx.mobile;
-  const before = () => { onLaunch(); copyText(target).then((okc) => { if (okc) showToast(tx.vpa ? 'UPI ID copied' : 'Number copied'); }); };
+  const target = tx.vpa || tx.mobile || tx.account;
+  const embeds = kind === 'fast' && !tx.account;
+  const before = () => { onLaunch(); copyText(target).then((okc) => { if (okc) showToast(tx.vpa ? 'UPI ID copied' : tx.mobile ? 'Number copied' : 'Account number copied'); }); };
   return (
     <div className="sheet session" role="dialog" aria-label="Complete payment">
       <header className="sheet-top"><button className="icon-btn" onClick={onBack} aria-label="Back"><Ic.Back /></button><b>Pay via *99#</b><span style={{ width: 40 }} /></header>
@@ -425,13 +434,13 @@ function Handoff({ tx, route, dialer = 'auto', showToast, onClose, onBack, onLau
         <div className="amt-show"><small>to {tx.name || target}</small><div>{formatINR(tx.amount)}</div></div>
         <div className="livebox"><Ic.Phone width={34} height={34} />
             <h2>Finish in your dialer</h2>
-            {kind === 'fast' && <p>ZepPay opens the full command <code>{code}</code> with {tx.vpa ? 'the UPI ID' : 'the number'} already in it. Enter <b>{formatINR(tx.amount)}</b>, then your UPI PIN. No mobile data needed.</p>}
-            {kind === 'sub' && <p>ZepPay copies {tx.vpa ? 'the UPI ID' : 'the number'} and opens <code>{code}</code>. Paste it, enter <b>{formatINR(tx.amount)}</b>, then your UPI PIN. No mobile data needed.</p>}
-            {kind === 'menu' && <p>ZepPay copies {tx.vpa ? 'the UPI ID' : 'the number'} and opens <code>{code}</code>. Choose <b>1</b> (Send Money), then <b>{menuKey}</b> ({tx.vpa ? 'UPI ID' : 'mobile number'}). Paste it, enter <b>{formatINR(tx.amount)}</b>, then your UPI PIN. No mobile data needed.</p>}
+            {embeds && <p>ZepPay opens the full command <code>{code}</code> with {tx.vpa ? 'the UPI ID' : 'the number'} already in it. Enter <b>{formatINR(tx.amount)}</b>, then your UPI PIN. No mobile data needed.</p>}
+            {!embeds && <p>ZepPay copies {tx.vpa ? 'the UPI ID' : tx.mobile ? 'the number' : 'the account number'} and opens <code>{code}</code>. Paste it{tx.ifsc ? ', then the IFSC,' : ''} at the prompt, enter <b>{formatINR(tx.amount)}</b>, then your UPI PIN. No mobile data needed.</p>}
         </div>
         <TelLink code={code} before={before} className="btn primary wide" data-testid="open-handoff"><Ic.Phone width={20} height={20} /> Open dialer</TelLink>
-        {kind !== 'menu' && <TelLink code={menuCode} className="btn ghost wide" data-testid="open-menu"><Ic.Phone width={20} height={20} /> Open {menuCode} menu instead</TelLink>}
-        {<button className="btn ghost wide" onClick={async () => showToast((await copyText(target)) ? 'Copied' : 'Copy not available')}><Ic.Copy width={20} height={20} /> Copy {target}</button>}
+        {kind !== 'fast' && <TelLink code={menuCode} className="btn ghost wide" data-testid="open-menu"><Ic.Phone width={20} height={20} /> Open {menuCode} menu instead</TelLink>}
+        {<button className="btn ghost wide" data-testid="copy-target" onClick={async () => showToast((await copyText(target)) ? 'Copied' : 'Copy not available')}><Ic.Copy width={20} height={20} /> Copy {target}</button>}
+        {tx.ifsc && <button className="btn ghost wide" data-testid="copy-ifsc" onClick={async () => showToast((await copyText(tx.ifsc)) ? 'IFSC copied' : 'Copy not available')}><Ic.Copy width={20} height={20} /> Copy IFSC {tx.ifsc}</button>}
         <p className="fine">When you come back, ZepPay asks if it worked so your history is accurate. Your bank sends the real confirmation.</p>
         {isIOS() && <p className="fine">Dialer rejects the code? Switch it in Settings, under "Dialer codes".</p>}
       </div>
@@ -446,7 +455,7 @@ function Outcome({ tx, onPick, onLater }) {
     <div className="sheet" role="dialog" aria-label="Payment outcome">
       <header className="sheet-top"><span style={{ width: 40 }} /><b>Did it go through?</b><button className="icon-btn" onClick={onLater} aria-label="Later"><Ic.Close /></button></header>
       <div className="sheet-body center">
-        <div className="amt-show"><small>{formatINR(tx.amount)} to</small><div style={{ fontSize: 26 }}>{tx.name || tx.vpa || tx.mobile}</div></div>
+        <div className="amt-show"><small>{formatINR(tx.amount)} to</small><div style={{ fontSize: 26 }}>{tx.name || label(tx)}</div></div>
         <p className="fine">ZepPay can't read your bank's reply. Check your bank SMS, then tell us so your history is right.</p>
       </div>
       <div className="sheet-foot col">
@@ -461,13 +470,12 @@ function Outcome({ tx, onPick, onLater }) {
 /* ---------- Balance ---------- */
 function BalanceScreen({ supported, dialer = 'auto', onClose, showToast }) {
   const code = ussdBalanceCode(undefined, dialer);
-  const viaMenu = ussdHandoffKind(undefined, dialer) === 'menu';
   return (
     <div className="sheet" role="dialog" aria-label="Check balance">
       <header className="sheet-top"><button className="icon-btn" onClick={onClose} aria-label="Close"><Ic.Close /></button><b>Check balance</b><span style={{ width: 40 }} /></header>
       <div className="sheet-body center">
         <div className="livebox"><Ic.Wallet width={34} height={34} /><h2>Balance over *99#</h2>
-          <p>ZepPay opens <code>{code}</code> in your dialer. {viaMenu ? 'Choose 3 (Check Balance), then pick' : 'Pick'} your bank account and enter your UPI PIN. Your bank shows the balance. ZepPay can't read or store it.</p></div>
+          <p>ZepPay opens <code>{code}</code> in your dialer. Pick your bank account and enter your UPI PIN. Your bank shows the balance. ZepPay can't read or store it.</p></div>
         {supported
           ? <TelLink code={code} className="btn primary wide" data-testid="balance-dial"><Ic.Phone width={20} height={20} /> Open dialer</TelLink>
           : <button className="btn primary wide" disabled data-testid="balance-dial"><Ic.Phone width={20} height={20} /> Open dialer</button>}
@@ -483,7 +491,7 @@ function Receipt({ tx, onClose, onAgain }) {
   const ok = tx.status === 'success';
   const when = new Date(tx.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   const share = async () => {
-    const text = `ZepPay: ${formatINR(tx.amount)} to ${tx.name || tx.vpa || tx.mobile} on ${when} (${statusText(tx.status)}, as confirmed by me)`;
+    const text = `ZepPay: ${formatINR(tx.amount)} to ${tx.name || label(tx)} on ${when} (${statusText(tx.status)}, as confirmed by me)`;
     try { if (navigator.share) await navigator.share({ text }); else await navigator.clipboard.writeText(text); } catch { /* cancelled */ }
   };
   return (
@@ -491,9 +499,9 @@ function Receipt({ tx, onClose, onAgain }) {
       <header className="sheet-top"><button className="icon-btn" onClick={onClose} aria-label="Close"><Ic.Close /></button><b>Payment</b><button className="icon-btn" onClick={share} aria-label="Share"><Ic.Share /></button></header>
       <div className="sheet-body center">
         <div className={'outcome ' + (ok ? 'ok' : tx.status === 'failed' ? 'bad' : 'idle')}><div className="burst sm">{ok ? <Ic.Check width={34} height={34} strokeWidth={3} /> : tx.status === 'failed' ? <Ic.Close width={34} height={34} strokeWidth={3} /> : <Ic.Clock width={34} height={34} />}</div>
-          <div className="bal-big">{formatINR(tx.amount)}</div><p>{ok ? 'Paid to' : tx.status === 'failed' ? 'Failed to pay' : 'Not confirmed, to'} <b>{tx.name || tx.vpa || tx.mobile}</b></p></div>
+          <div className="bal-big">{formatINR(tx.amount)}</div><p>{ok ? 'Paid to' : tx.status === 'failed' ? 'Failed to pay' : 'Not confirmed, to'} <b>{tx.name || label(tx)}</b></p></div>
         <dl className="kv">
-          <dt>{tx.vpa ? 'UPI ID' : 'Mobile'}</dt><dd>{tx.vpa || tx.mobile}</dd><dt>Date</dt><dd>{when}</dd>
+          <dt>{tx.vpa ? 'UPI ID' : tx.mobile ? 'Mobile' : 'Account'}</dt><dd>{tx.vpa || tx.mobile || `${tx.account} (${tx.ifsc})`}</dd><dt>Date</dt><dd>{when}</dd>
           <dt>Paid via</dt><dd>*99#</dd>
           {tx.note && <><dt>Note</dt><dd>{tx.note}</dd></>}
         </dl>
@@ -584,7 +592,7 @@ function SettingsTab({ theme, setTheme, carrier, setCarrier, dialer = 'auto', se
         {[['auto', 'Auto'], ['ios27', 'iOS 27+'], ['ios26', 'iOS 26 or below']].map(([k, l]) => (
           <button key={k} role="radio" aria-checked={dialer === k} className={dialer === k ? 'on' : ''} onClick={() => setDialer(k)}>{l}</button>))}
       </div>
-      <p className="fine left">This device gets the <code>{ussdMenuCode(undefined, dialer)}</code> style. iOS 27 needs double-hash codes like *99*1*3##; iOS 26 and below need single-hash *99#. Auto uses the iOS 27 style on iPhone.</p>
+      <p className="fine left">This device gets the <code>{ussdMenuCode(undefined, dialer)}</code> style. iOS 27 needs double-hash codes like *99*1*3##; iOS 26 and below need single-hash codes like *99*1*3#. Auto uses the iOS 27 style on iPhone.</p>
       <h3 className="sec">App</h3>
       <div className="card-list">
         {installEvt ? <button className="rowbtn" onClick={onInstall}><Ic.Download width={18} height={18} /> Install ZepPay</button> : <p className="fine left" style={{ margin: 0 }}>To install: use your browser menu, "Add to Home Screen".</p>}

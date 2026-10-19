@@ -63,6 +63,19 @@ export function carrierSupported(id) {
   return c ? c.ok : true;
 }
 
+export function isValidAccount(v) {
+  return /^\d{9,18}$/.test(String(v || '').replace(/[\s-]/g, ''));
+}
+export function normAccount(v) {
+  return String(v || '').replace(/[\s-]/g, '');
+}
+export function isValidIfsc(v) {
+  return /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/.test(String(v || '').trim());
+}
+export function normIfsc(v) {
+  return String(v || '').trim().toUpperCase();
+}
+
 export function isValidMobile(v) {
   return /^[6-9]\d{9}$/.test(String(v || '').replace(/[\s-]/g, '').replace(/^(\+91|91|0)(?=\d{10}$)/, ''));
 }
@@ -132,7 +145,7 @@ export function ussdMenuCode(ua = defaultUA(), mode = 'auto') {
   return ussdHandoffKind(ua, mode) === 'sub' ? '*99##' : '*99#';
 }
 
-// 'fast': payee embedded in the command. 'sub': direct sub-menu, payee gets pasted. 'menu': bare menu, navigate by hand.
+// 'fast': payee embedded in the command (Android/others). 'sub': full-length double-hash code, payee pasted (iOS 27). 'menu': full-length single-hash code, payee pasted (iOS 26 and below).
 // mode: 'auto' | 'ios27' | 'ios26' (user setting; iPhone UA version reporting is unreliable).
 export function ussdHandoffKind(ua = defaultUA(), mode = 'auto') {
   const { ios } = uaPlatform(ua);
@@ -148,19 +161,24 @@ export function ussdHandoffKind(ua = defaultUA(), mode = 'auto') {
 // Payment dial code for a payee ({ vpa } or { mobile }).
 export function ussdPayCode(payee, ua = defaultUA(), mode = 'auto') {
   const kind = ussdHandoffKind(ua, mode);
+  // Bank account + IFSC is a two-field payee, so it is never embedded: dial the
+  // account-transfer sub-code and paste the account number, then the IFSC.
+  if (payee.account) return kind === 'sub' ? '*99*1*5##' : '*99*1*5#';
   if (kind === 'fast') {
     if (payee.vpa) return `*99*1*3*${payee.vpa}#`;
     if (payee.mobile) return `*99*1*1*${payee.mobile}#`;
     return ussdMenuCode(ua, mode);
   }
+  // iOS rejects codes with the payee embedded, so iPhone dials the full-length
+  // sub-code and the payee gets pasted at the prompt: double hash on iOS 27,
+  // single hash on iOS 26 and below.
   if (kind === 'sub') return payee.vpa ? '*99*1*3##' : '*99*1*1##';
+  if (payee.vpa) return '*99*1*3#';
+  if (payee.mobile) return '*99*1*1#';
   return ussdMenuCode(ua, mode);
 }
 
 // Balance dial code.
 export function ussdBalanceCode(ua = defaultUA(), mode = 'auto') {
-  const kind = ussdHandoffKind(ua, mode);
-  if (kind === 'fast') return '*99*3#';
-  if (kind === 'sub') return '*99*3##';
-  return ussdMenuCode(ua, mode);
+  return ussdHandoffKind(ua, mode) === 'sub' ? '*99*3##' : '*99*3#';
 }
