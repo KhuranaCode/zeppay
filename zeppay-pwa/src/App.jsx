@@ -47,6 +47,27 @@ function useOnline() {
 }
 async function copyText(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
 
+// The web app is iOS-only. Android gets the native ZepPay app instead; the web
+// build no longer offers its Android *99# path.
+const ANDROID_APP_URL = ''; // filled with the app download link when the Android build ships
+function isAndroid() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent || '');
+}
+function AndroidNotice() {
+  return (
+    <div className="onb">
+      <div className="onb-hero"><div className="logo-big"><img src={logo} alt="ZepPay logo" /></div><h1 className="brand">ZepPay</h1><p className="tag">Offline UPI payments</p></div>
+      <div className="onb-card">
+        <h2>Made for iPhone</h2>
+        <p>The ZepPay web app works on iPhone. On Android, ZepPay is a real app: contacts, full *99# commands, and Jio support over UPI 123PAY.</p>
+      </div>
+      {ANDROID_APP_URL && <a className="btn primary" href={ANDROID_APP_URL}>Get the Android app</a>}
+      <p className="fine">Same ZepPay, built properly for each phone.</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [onboarded, setOnboarded] = usePersisted('onboarded', false);
   const [theme, setTheme] = useTheme();
@@ -77,6 +98,7 @@ export default function App() {
 
   const supported = carrierSupported(carrier);
   const go = (s) => setScreen(s);
+  if (isAndroid()) return <AndroidNotice />;
   const close = () => setScreen(null);
   const ctx = { carrier, supported, history, showToast, online, go };
 
