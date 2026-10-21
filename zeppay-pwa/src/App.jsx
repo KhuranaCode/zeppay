@@ -49,7 +49,7 @@ async function copyText(t) { try { await navigator.clipboard.writeText(t); retur
 
 // The web app is iOS-only. Android gets the native ZepPay app instead; the web
 // build no longer offers its Android *99# path.
-const ANDROID_APP_URL = ''; // filled with the app download link when the Android build ships
+const ANDROID_APP_URL = 'https://github.com/mananbharti/zeppay-release/releases/download/v1.0.0/zeppay-v1.0.0.apk';
 function isAndroid() {
   if (typeof navigator === 'undefined') return false;
   return /Android/i.test(navigator.userAgent || '');
