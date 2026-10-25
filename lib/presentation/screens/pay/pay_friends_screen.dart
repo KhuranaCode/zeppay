@@ -6,6 +6,7 @@ import '../../../core/platform.dart';
 import '../../../core/widgets/chrome.dart';
 import '../../../data/models/models.dart';
 import '../../../data/services/providers.dart';
+import '../../../data/services/rail_engine.dart';
 
 class PayFriendsScreen extends ConsumerStatefulWidget {
   const PayFriendsScreen({super.key});
@@ -50,7 +51,8 @@ class _PayFriendsScreenState extends ConsumerState<PayFriendsScreen> {
       return;
     }
     if (rupees <= 0) return;
-    final resolved = vpa.contains('@') ? vpa : '$vpa@upi';
+    // Bare numbers ride the *99# send-to-mobile rail; no VPA is invented.
+    final resolved = vpa.contains('@') ? vpa : RailEngine.bareMobile(vpa);
     ref.read(paymentDraftProvider.notifier).state = PaymentDraft(
       vpa: resolved,
       amountPaise: (rupees * 100).round(),
