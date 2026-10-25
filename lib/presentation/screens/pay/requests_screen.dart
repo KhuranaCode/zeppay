@@ -11,6 +11,7 @@ import '../../../core/widgets/zep_components.dart';
 import '../../../data/local/app_store.dart';
 import '../../../data/models/models.dart';
 import '../../../data/services/providers.dart';
+import '../../../data/services/rail_engine.dart';
 
 class RequestsScreen extends ConsumerStatefulWidget {
   const RequestsScreen({super.key});
@@ -181,13 +182,19 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                                               backgroundColor: AppColors.accent,
                                             ),
                                             onPressed: () {
+                                              final reqMobile =
+                                                  RailEngine.bareMobile(
+                                                r.fromPhone,
+                                              );
                                               startPayment(
                                                 ref,
                                                 vpa: r.toVpa.contains('@')
                                                     ? r.toVpa
                                                     : (r.fromPhone.contains('@')
                                                         ? r.fromPhone
-                                                        : '${r.fromPhone}@upi'),
+                                                        : (reqMobile.isNotEmpty
+                                                            ? reqMobile
+                                                            : r.fromPhone)),
                                                 amountPaise: r.amountPaise,
                                                 payeeName: r.fromName,
                                                 note: r.note,
