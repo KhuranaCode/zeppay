@@ -50,11 +50,15 @@ app.use((req, res, next) => {
 });
 
 function e164(phone) {
-  const d = String(phone || '').replace(/\D/g, '');
+  let d = String(phone || '').replace(/\D/g, '');
+  // Indian trunk prefix: "09876543210" and "+91 09876543210" both mean +919876543210.
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  if (d.length === 13 && d.startsWith('910')) d = `91${d.slice(3)}`;
   if (d.length === 10) return `+91${d}`;
   if (d.startsWith('91') && d.length === 12) return `+${d}`;
-  if (String(phone).startsWith('+')) return String(phone);
-  return d ? `+${d}` : '';
+  // Other international numbers: normalized digits only, never raw input.
+  if (d.length >= 10 && d.length <= 15) return `+${d}`;
+  return '';
 }
 
 function six() {
@@ -233,8 +237,13 @@ app.post('/verify/check', async (req, res) => {
 });
 
 const port = Number(process.env.PORT) || 8787;
-app.listen(port, '0.0.0.0', () =>
-  console.log(
-    `Zep Pay OTP proxy on :${port} (${useVerify ? 'verify' : useSms ? 'messaging' : 'dev'}; supabase ${db.enabled() ? 'on' : 'off'})`,
-  ),
-);
+if (require.main === module) {
+  app.listen(port, '0.0.0.0', () =>
+    console.log(
+      `Zep Pay OTP proxy on :${port} (${useVerify ? 'verify' : useSms ? 'messaging' : 'dev'}; supabase ${db.enabled() ? 'on' : 'off'})`,
+    ),
+  );
+}
+
+// Exported for backend/test_server.js unit checks.
+module.exports = { e164 };
