@@ -189,8 +189,8 @@ class _PayMobileScreenState extends ConsumerState<PayMobileScreen> {
     return ZepPage(
       title: 'Pay to mobile',
       subtitle: isWebApp
-          ? 'We append @upi if they have not shared a VPA. Then your UPI app opens.'
-          : 'We append @upi if they have not shared a VPA. Same offline rails as scan.',
+          ? 'Pays through the *99# send-to-mobile option. No UPI ID needed.'
+          : 'Same offline rails as scan, through *99# send-to-mobile.',
       footer: GlowButton(
         label: 'CONTINUE',
         onTap: () {
@@ -204,7 +204,7 @@ class _PayMobileScreenState extends ConsumerState<PayMobileScreen> {
           _goPay(
             context,
             ref,
-            vpa: '$digits@upi',
+            vpa: digits,
             amountPaise: _paise(_amount.text) ?? 0,
             name: digits,
             source: 'mobile',
@@ -459,7 +459,7 @@ class _PayContactsScreenState extends ConsumerState<PayContactsScreen> {
                             : () => _goPay(
                                 context,
                                 ref,
-                                vpa: '$last10@upi',
+                                vpa: last10,
                                 amountPaise: 0,
                                 name: c.displayName,
                                 source: 'contact',

@@ -77,6 +77,29 @@ class RailEngine {
     return vpa.replaceAll('.', '*').replaceAll('@', '*');
   }
 
+  static final RegExp _bareMobileRe = RegExp(r'^\d{10}$');
+
+  /// True when the payee is a bare 10-digit mobile number, not a VPA.
+  static bool isBareMobile(String vpa) => _bareMobileRe.hasMatch(vpa);
+
+  /// Normalizes a phone-ish value to a bare 10-digit Indian mobile, or ''
+  /// when it is not one. Never invents a VPA.
+  static String bareMobile(String raw) {
+    var d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.length == 12 && d.startsWith('91')) d = d.substring(2);
+    if (d.length == 11 && d.startsWith('0')) d = d.substring(1);
+    return d.length == 10 ? d : '';
+  }
+
+  /// Send-money-to-mobile shortcut used by BHIM USSD (*99# option 1.1).
+  static String ussdMobileString({
+    required String mobile,
+    required int amountPaise,
+  }) {
+    final rupees = formatUssdAmount(amountPaise);
+    return '*99*1*1*$mobile*$rupees#';
+  }
+
   /// Whole rupees for USSD — rounded, never truncated for large amounts.
   static int rupeesFromPaise(int amountPaise) {
     return (amountPaise + 50) ~/ 100;
@@ -118,6 +141,15 @@ class RailEngine {
     PaymentDraft draft, {
     String manufacturer = '',
   }) {
+    // A bare mobile number is not a VPA: it always goes over the *99#
+    // send-to-mobile option - never a fabricated handle or a upi:// intent.
+    // (IVR dials only the 123PAY number plus amount, so it needs no payee.)
+    if (isBareMobile(draft.vpa) && rail != PaymentRail.ivr) {
+      return ussdMobileString(
+        mobile: draft.vpa,
+        amountPaise: draft.amountPaise,
+      );
+    }
     switch (rail) {
       case PaymentRail.ussd:
         return ussdString(vpa: draft.vpa, amountPaise: draft.amountPaise);

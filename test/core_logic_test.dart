@@ -318,4 +318,54 @@ void main() {
     final badLocal = ZepCardCodec.appUri(vpa: 'bad@vpa@upi', name: 'X');
     expect(ZepCardCodec.parseUri(badLocal), isNull);
   });
+
+  test('mobile payee dials *99# send-to-mobile, not the UPI-ID option', () {
+    const draft = PaymentDraft(
+      vpa: '9876543210',
+      amountPaise: 10000,
+      payeeName: '9876543210',
+      source: 'mobile',
+    );
+    expect(
+      RailEngine.ussdMobileString(mobile: '9876543210', amountPaise: 10000),
+      '*99*1*1*9876543210*100#',
+    );
+    expect(
+      RailEngine.dialFor(PaymentRail.ussd, draft),
+      '*99*1*1*9876543210*100#',
+    );
+  });
+
+  test('bare mobile number never builds a upi:// intent', () {
+    const draft = PaymentDraft(
+      vpa: '9876543210',
+      amountPaise: 5000,
+      source: 'mobile',
+    );
+    expect(RailEngine.isBareMobile(draft.vpa), isTrue);
+    final dial = RailEngine.dialFor(PaymentRail.upiIntent, draft);
+    expect(dial.startsWith('upi://'), isFalse);
+    expect(dial, '*99*1*1*9876543210*50#');
+  });
+
+  test('real VPAs keep the UPI-ID option and upi:// intent', () {
+    const draft = PaymentDraft(vpa: 'tea@okaxis', amountPaise: 10000);
+    expect(RailEngine.isBareMobile(draft.vpa), isFalse);
+    expect(
+      RailEngine.dialFor(PaymentRail.ussd, draft),
+      '*99*1*3*tea*okaxis*100#',
+    );
+    expect(
+      RailEngine.upiUri(draft).startsWith('upi://pay?pa=tea@okaxis'),
+      isTrue,
+    );
+  });
+
+  test('bareMobile normalizes and never invents a VPA', () {
+    expect(RailEngine.bareMobile('9876543210'), '9876543210');
+    expect(RailEngine.bareMobile('+91 98765 43210'), '9876543210');
+    expect(RailEngine.bareMobile('09876543210'), '9876543210');
+    expect(RailEngine.bareMobile('tea@okaxis'), '');
+    expect(RailEngine.bareMobile('12345'), '');
+  });
 }
