@@ -1,10 +1,10 @@
 import 'dart:async';
+
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js' as js;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js_util' as js_util;
+
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:image_picker/image_picker.dart';
 
@@ -26,11 +26,12 @@ Future<String?> decodeQrFromGallery(XFile file) async {
       ownsUrl = true;
     }
 
-    final imageUrl = url!;
+    final imageUrl = url;
     final completer = Completer<String?>();
-    js.context.callMethod('zepDecodeImageUrlCb', [
-      imageUrl,
-      js_util.allowInterop((result) {
+    globalContext.callMethod(
+      'zepDecodeImageUrlCb'.toJS,
+      imageUrl.toJS,
+      ((JSAny? result) {
         if (ownsUrl) {
           html.Url.revokeObjectUrl(imageUrl);
         }
@@ -39,10 +40,12 @@ Future<String?> decodeQrFromGallery(XFile file) async {
           completer.complete(null);
           return;
         }
-        final data = (result as js.JsObject)['data'] as String?;
+        final data = (result as JSObject)
+            .getProperty<JSString?>('data'.toJS)
+            ?.toDart;
         completer.complete(data);
-      }),
-    ]);
+      }).toJS,
+    );
     return completer.future.timeout(const Duration(seconds: 15));
   } catch (_) {
     if (ownsUrl && url != null) {
