@@ -1,10 +1,10 @@
 import 'dart:async';
+
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js' as js;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js_util' as js_util;
+
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:flutter/material.dart';
 
@@ -61,7 +61,7 @@ class _WebQrScannerState extends State<WebQrScanner> {
   void _placeCamera() {
     final rect = _scanRect();
     if (rect == null) return;
-    js.context.callMethod('zepPlaceCamera', [js.JsObject.jsify(rect)]);
+    globalContext.callMethod('zepPlaceCamera'.toJS, rect.jsify());
   }
 
   /// Must stay synchronous through the JS getUserMedia call (iOS Safari).
@@ -72,9 +72,10 @@ class _WebQrScannerState extends State<WebQrScanner> {
       _error = null;
     });
     final rect = _scanRect();
-    js.context.callMethod('zepStartCamera', [
-      rect == null ? null : js.JsObject.jsify(rect),
-      js_util.allowInterop((_) {
+    globalContext.callMethod(
+      'zepStartCamera'.toJS,
+      rect?.jsify(),
+      ((JSAny? _) {
         if (!mounted) return;
         _live = true;
         widget.onCameraStarted?.call();
@@ -89,9 +90,9 @@ class _WebQrScannerState extends State<WebQrScanner> {
           (_) => _placeCamera(),
         );
         setState(() => _busy = false);
-      }),
-      js_util.allowInterop((_) {
-        js.context.callMethod('zepStopCamera');
+      }).toJS,
+      ((JSAny? _) {
+        globalContext.callMethod('zepStopCamera'.toJS);
         widget.onCameraError?.call();
         if (!mounted) return;
         setState(() {
@@ -99,15 +100,17 @@ class _WebQrScannerState extends State<WebQrScanner> {
           _live = false;
           _error = 'blocked';
         });
-      }),
-    ]);
+      }).toJS,
+    );
   }
 
   void _tick() {
     if (_locked || !_live) return;
-    final result = js.context.callMethod('zepGrabCameraFrame');
+    final result = globalContext.callMethod('zepGrabCameraFrame'.toJS);
     if (result == null) return;
-    final data = (result as js.JsObject)['data'] as String?;
+    final data = (result as JSObject)
+        .getProperty<JSString?>('data'.toJS)
+        ?.toDart;
     if (data == null || data.isEmpty) return;
     _locked = true;
     _decodeTimer?.cancel();
@@ -121,7 +124,7 @@ class _WebQrScannerState extends State<WebQrScanner> {
     _decodeTimer = null;
     _placeTimer?.cancel();
     _placeTimer = null;
-    js.context.callMethod('zepStopCamera');
+    globalContext.callMethod('zepStopCamera'.toJS);
     if (_live) {
       _live = false;
       widget.onCameraStopped?.call();
