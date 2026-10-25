@@ -12,6 +12,7 @@ import '../../../data/local/app_store.dart';
 import '../../../data/models/models.dart';
 import '../../../data/services/csv_export_service.dart';
 import '../../../data/services/providers.dart';
+import '../../../data/services/rail_engine.dart';
 import '../../../data/services/split_math.dart';
 import '../../widgets/contact_picker.dart';
 
@@ -147,11 +148,16 @@ class GroupDetailScreen extends ConsumerWidget {
                         final payee = group.members
                             .where((m) => m.id == e.to)
                             .firstOrNull;
+                        final payeeMobile = RailEngine.bareMobile(
+                          payee?.phone ?? '',
+                        );
                         startPayment(
                           ref,
                           vpa: (payee?.upiId.isNotEmpty == true)
                               ? payee!.upiId
-                              : '${payee?.phone ?? ''}@upi',
+                              : (payeeMobile.isNotEmpty
+                                  ? payeeMobile
+                                  : (payee?.phone ?? '')),
                           amountPaise: e.amount,
                           payeeName: to,
                           note: 'Settle ${group.name}',
