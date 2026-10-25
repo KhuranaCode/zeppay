@@ -49,12 +49,16 @@ class _ConnectingScreenState extends ConsumerState<ConnectingScreen> {
   String get _amountDisplay =>
       '₹${(_amountPaise / 100).toStringAsFixed(_amountPaise % 100 == 0 ? 0 : 2)}';
 
-  Future<void> _showVpaCopiedToast() async {
+  Future<void> _showVpaCopiedToast(String vpa) async {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('VPA copied — paste now if the dialer asks'),
-        duration: Duration(seconds: 4),
+      SnackBar(
+        content: Text(
+          RailEngine.isBareMobile(vpa)
+              ? 'Number copied — paste now if the dialer asks'
+              : 'VPA copied — paste now if the dialer asks',
+        ),
+        duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -185,7 +189,7 @@ class _ConnectingScreenState extends ConsumerState<ConnectingScreen> {
       await Clipboard.setData(ClipboardData(text: draft.vpa));
       await session.markUpiCopied();
       if (rail == PaymentRail.ivr || isWebApp) {
-        await _showVpaCopiedToast();
+        await _showVpaCopiedToast(draft.vpa);
       }
       if (!mounted) return;
       setState(() {
@@ -256,7 +260,7 @@ class _ConnectingScreenState extends ConsumerState<ConnectingScreen> {
     });
     await Clipboard.setData(ClipboardData(text: draft.vpa));
     await ref.read(paymentSessionProvider.notifier).markUpiCopied();
-    await _showVpaCopiedToast();
+    await _showVpaCopiedToast(draft.vpa);
     await Future<void>.delayed(const Duration(milliseconds: 400));
     final uri = Uri.parse(RailEngine.upiUri(draft));
     var opened = false;
@@ -287,7 +291,7 @@ class _ConnectingScreenState extends ConsumerState<ConnectingScreen> {
   }) async {
     await Clipboard.setData(ClipboardData(text: draft.vpa));
     await ref.read(paymentSessionProvider.notifier).markUpiCopied();
-    await _showVpaCopiedToast();
+    await _showVpaCopiedToast(draft.vpa);
     if (!mounted) return;
     setState(() {
       _phase = _ConnectPhase.amountSent;
@@ -344,7 +348,12 @@ class _ConnectingScreenState extends ConsumerState<ConnectingScreen> {
         return;
       }
 
-      final rail = resolution.rail!;
+      var rail = resolution.rail!;
+      // A bare mobile number is not a VPA: no UPI app intent can address it,
+      // so it always rides the *99# send-to-mobile rail instead.
+      if (rail == PaymentRail.upiIntent && RailEngine.isBareMobile(draft.vpa)) {
+        rail = PaymentRail.ussd;
+      }
       assert(
         info.platform != 'android' || rail != PaymentRail.upiIntent,
         'Android must not use upiIntent',
