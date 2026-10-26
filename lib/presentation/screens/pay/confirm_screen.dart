@@ -14,6 +14,7 @@ import '../../../core/widgets/zep_components.dart';
 import '../../../data/local/app_store.dart';
 import '../../../data/models/models.dart';
 import '../../../data/services/providers.dart';
+import '../../../data/services/rail_engine.dart';
 import '../../../data/services/sound_cue_service.dart';
 import '../../../data/services/receipt_share.dart';
 import '../../../l10n/app_localizations.dart';
@@ -288,7 +289,12 @@ class _ConfirmScreenState extends ConsumerState<ConfirmScreen>
                           child: Column(
                             children: [
                               _row('Paid to', who),
-                              _row('UPI ID', vpa),
+                              _row(
+                                RailEngine.isBareMobile(vpa)
+                                    ? 'Mobile'
+                                    : 'UPI ID',
+                                vpa,
+                              ),
                               _row('Zep Pay ID', refCode),
                               _row(
                                 'On',
